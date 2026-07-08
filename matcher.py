@@ -1,40 +1,40 @@
 import anthropic
-
 import os
 
-student = """
-Name: Mishti Shah
-Major/Year: Informatics and Business, incoming junior
-Career goals: Tech consulting, combining business and tech
-Skills I have: SQL, Python, Microsoft 365, Excel
-Skills I want to develop: Business communication, interviewing, profile building, recruitment
-What I want in a mentor: Someone who can help guide me in finding a job/career
-"""
-
 mentors = """
-MENTOR 1 — Career Navigator
+MENTOR 1 - Career Navigator
 Industry/Role: Senior Product Manager / Strategy Consultant
 Years of experience: 12+
 Can advise on: Career exploration, breaking into tech/business, resume, networking, long-term roadmaps
-Career path: Business degree → Analyst → Product/Strategy → Leadership
+Career path: Business degree -> Analyst -> Product/Strategy -> Leadership
 Mentorship style: Structured and goal-oriented, gives action steps
 Availability: 2 virtual sessions/month + async messaging
 
-MENTOR 2 — Skill Builder
+MENTOR 2 - Skill Builder
 Industry/Role: Data Analytics & AI Professional
 Years of experience: 7+
 Can advise on: Technical and business skills, AI tools, portfolio building, certifications
-Career path: Entry-level analyst → Business/Data Analyst → AI specialization Mentorship style: Hands-on and project-based, learning by doing
+Career path: Entry-level analyst -> Business/Data Analyst -> AI specialization
+Mentorship style: Hands-on and project-based, learning by doing
 Availability: Weekly office hours + monthly skill workshops
 
-MENTOR 3 — Network Connector
+MENTOR 3 - Network Connector
 Industry/Role: Startup Founder / People & Talent Leader
 Years of experience: 15+
 Can advise on: Professional relationships, leadership, personal branding, entrepreneurship
-Career path: Corporate → Leadership → Founded ventures → Mentoring
+Career path: Corporate -> Leadership -> Founded ventures -> Mentoring
 Mentorship style: Conversational and connection-focused
 Availability: Monthly 1:1 + networking events
 """
+
+print("Enter student profile (press Enter twice when done):")
+lines = []
+while True:
+    line = input()
+    if line == "":
+        break
+    lines.append(line)
+student = "\n".join(lines)
 
 client = anthropic.Anthropic()
 
