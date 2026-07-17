@@ -27,6 +27,61 @@ Can advise on: Professional relationships, leadership, personal branding, entrep
 Career path: Corporate -> Leadership -> Founded ventures -> Mentoring
 Mentorship style: Conversational and connection-focused
 Availability: Monthly 1:1 + networking events
+MENTOR 4 - The CPA
+Industry/Role: Senior Auditor / CPA at Big 4 Accounting Firm
+Years of experience: 6+
+Can advise on: CPA exam, Big 4 recruiting, audit and tax careers, accounting internships, career progression
+Career path: Accounting degree -> Big 4 internship -> Staff Auditor -> Senior Auditor
+Mentorship style: Detail-oriented and process-driven, helps students build clear action plans
+Availability: Biweekly sessions + email support
+
+MENTOR 5 - The Marketing Strategist
+Industry/Role: Brand Manager at Consumer Goods Company
+Years of experience: 8+
+Can advise on: Marketing careers, brand strategy, agency vs corporate, building a portfolio, MBA considerations
+Career path: Marketing degree -> Agency -> Brand Associate -> Brand Manager
+Mentorship style: Creative and collaborative, focuses on storytelling and personal brand
+Availability: Monthly 1:1 + async feedback on work samples
+
+MENTOR 6 - The IT Manager
+Industry/Role: IT Manager at Mid-Size Corporation
+Years of experience: 10+
+Can advise on: IT career paths, certifications, managing technical teams, moving from technical to management roles
+Career path: IT Support -> Systems Admin -> IT Lead -> IT Manager
+Mentorship style: Practical and solutions-focused, shares real workplace scenarios
+Availability: Biweekly virtual sessions
+
+MENTOR 7 - The Financial Analyst
+Industry/Role: Senior Financial Analyst in FP&A at Fortune 500
+Years of experience: 5+
+Can advise on: Corporate finance careers, FP&A, financial modeling, CFA prep, difference between banking and corporate finance
+Career path: Finance degree -> Junior Analyst -> Financial Analyst -> Senior FP&A Analyst
+Mentorship style: Analytical and structured, uses real examples from corporate finance
+Availability: Monthly sessions + quick turnaround on resume/model reviews
+
+MENTOR 8 - The Software Engineer
+Industry/Role: Software Engineer at Mid-Size Tech Company
+Years of experience: 4+
+Can advise on: Technical interviews, coding practice, choosing a tech stack, breaking into software engineering, internship recruiting
+Career path: CS degree -> internships -> junior SWE -> Software Engineer
+Mentorship style: Hands-on and technical, does mock interviews and code reviews
+Availability: Weekly office hours
+
+MENTOR 9 - The HR and Talent Leader
+Industry/Role: Talent Acquisition Manager at Tech Company
+Years of experience: 7+
+Can advise on: Resume and interview prep, what recruiters actually look for, networking, salary negotiation, switching industries
+Career path: Psychology degree -> HR coordinator -> Recruiter -> Talent Acquisition Manager
+Mentorship style: Candid and encouraging, gives honest feedback on how candidates come across
+Availability: Biweekly sessions + resume review turnaround within 48 hours
+
+MENTOR 10 - The Recent Grad
+Industry/Role: Business Analyst at Consulting Firm, 2 years out of college
+Years of experience: 2
+Can advise on: Recent recruiting cycles, internship applications, balancing college and job search, first job advice, what surprised them about the real world
+Career path: Business degree -> internships -> full-time analyst offer
+Mentorship style: Relatable and direct, shares what actually worked and what didn't in recent recruiting
+Availability: Weekly check-ins, very responsive async 
 """
 
 def get_match(student):
@@ -264,5 +319,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-print("Server running at http://localhost:8080")
-HTTPServer(("", 8080), Handler).serve_forever()
+port = int(os.environ.get("PORT", 8080))
+print(f"Server running at http://localhost:{port}")
+HTTPServer(("", port), Handler).serve_forever()
+
