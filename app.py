@@ -3,7 +3,9 @@ import os
 import sqlite3
 import urllib.parse
 import json
+import io
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pypdf import PdfReader
 
 DB = "mentors.db"
 
@@ -63,6 +65,16 @@ def save_mentor(data):
     ))
     conn.commit()
     conn.close()
+
+def extract_pdf_text(pdf_bytes):
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        return text.strip()
+    except Exception:
+        return ""
 
 def get_match(student, mentors):
     client = anthropic.Anthropic()
@@ -130,7 +142,8 @@ def build_results_page(matches):
         nav {{ background: #0f172a; padding: 16px 40px; display: flex; align-items: center; justify-content: space-between; }}
         nav h1 {{ color: white; font-size: 20px; font-weight: 600; }}
         nav h1 span {{ color: #38bdf8; }}
-        nav a {{ color: #38bdf8; text-decoration: none; font-size: 14px; font-weight: 600; }}
+        nav div {{ display: flex; gap: 24px; }}
+        nav a {{ color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; }}
         .hero {{ background: #0f172a; padding: 50px 40px 70px; text-align: center; }}
         .hero h2 {{ color: white; font-size: 32px; font-weight: 700; margin-bottom: 10px; }}
         .hero p {{ color: #94a3b8; font-size: 15px; }}
@@ -153,7 +166,7 @@ def build_results_page(matches):
 <body>
     <nav>
         <h1>Bridge<span>.</span></h1>
-        <div style="display:flex;gap:24px;">
+        <div>
             <a href="/">Home</a>
             <a href="/match">Find a Mentor</a>
             <a href="/signup">Become a Mentor</a>
@@ -167,6 +180,40 @@ def build_results_page(matches):
     <div class="back"><a href="/match">Search Again</a></div>
 </body>
 </html>"""
+
+def parse_multipart(data, content_type):
+    boundary = None
+    for part in content_type.split(";"):
+        part = part.strip()
+        if part.startswith("boundary="):
+            boundary = part[9:].strip()
+            break
+    if not boundary:
+        return {}, None
+    boundary_bytes = ("--" + boundary).encode()
+    parts = data.split(boundary_bytes)
+    fields = {}
+    pdf_bytes = None
+    for part in parts[1:]:
+        if part in (b"--\r\n", b"--"):
+            continue
+        if b"\r\n\r\n" not in part:
+            continue
+        header_section, _, body = part.partition(b"\r\n\r\n")
+        body = body.rstrip(b"\r\n")
+        headers = header_section.decode(errors="ignore")
+        name = None
+        for line in headers.split("\r\n"):
+            if "Content-Disposition" in line:
+                for item in line.split(";"):
+                    item = item.strip()
+                    if item.startswith('name="'):
+                        name = item[6:-1]
+        if name == "resume":
+            pdf_bytes = body if body else None
+        elif name:
+            fields[name] = body.decode(errors="ignore")
+    return fields, pdf_bytes
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -188,51 +235,66 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers["Content-Length"])
-        data = urllib.parse.parse_qs(self.rfile.read(length).decode())
-        flat = {k: v[0] for k, v in data.items()}
+        raw_data = self.rfile.read(length)
+        content_type = self.headers.get("Content-Type", "")
 
         if self.path == "/signup":
+            flat = urllib.parse.parse_qs(raw_data.decode())
+            flat = {k: v[0] for k, v in flat.items()}
             save_mentor(flat)
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(THANKS_HTML.encode())
+            return
+
+        if "multipart/form-data" in content_type:
+            flat, pdf_bytes = parse_multipart(raw_data, content_type)
         else:
-            student = flat.get("student", "")
-            mentors = get_mentors()
-            if not mentors:
-                self.send_response(200)
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(b"No mentors have signed up yet.")
-                return
-            raw = get_match(student, mentors)
-            try:
-                raw = raw.strip()
-                if raw.startswith("```"):
-                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
-                data_json = json.loads(raw)
-                matches = data_json.get("matches", [])[:3]
-            except Exception:
-                matches = []
+            flat = {k: v[0] for k, v in urllib.parse.parse_qs(raw_data.decode()).items()}
+            pdf_bytes = None
+
+        student_text = flat.get("student", "").strip()
+        resume_text = ""
+        if pdf_bytes:
+            resume_text = extract_pdf_text(pdf_bytes)
+
+        combined = student_text
+        if resume_text:
+            combined += "\n\nRESUME CONTENT:\n" + resume_text
+
+        if not combined.strip():
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(build_results_page(matches).encode())
+            self.wfile.write(b"Please enter your profile or upload a resume.")
+            return
+
+        mentors = get_mentors()
+        if not mentors:
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"No mentors have signed up yet.")
+            return
+
+        raw = get_match(combined, mentors)
+        try:
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+            data_json = json.loads(raw)
+            matches = data_json.get("matches", [])[:3]
+        except Exception:
+            matches = []
+
+        self.send_response(200)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(build_results_page(matches).encode())
 
     def log_message(self, format, *args):
         pass
-
-NAV = """
-<nav>
-    <h1>Bridge<span>.</span></h1>
-    <div style="display:flex;gap:24px;">
-        <a href="/">Home</a>
-        <a href="/match">Find a Mentor</a>
-        <a href="/signup">Become a Mentor</a>
-    </div>
-</nav>
-"""
 
 LANDING_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -330,7 +392,15 @@ MATCH_HTML = """<!DOCTYPE html>
         .card { background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 720px; margin: -40px auto 40px; padding: 40px; }
         label { display: block; font-size: 13px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
         .hint { font-size: 13px; color: #94a3b8; margin-bottom: 12px; font-weight: normal; text-transform: none; letter-spacing: 0; }
-        textarea { width: 100%; height: 180px; padding: 14px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; resize: vertical; font-family: inherit; color: #1a1a2e; line-height: 1.6; outline: none; }
+        textarea { width: 100%; height: 160px; padding: 14px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; resize: vertical; font-family: inherit; color: #1a1a2e; line-height: 1.6; outline: none; }
+        .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; color: #94a3b8; font-size: 13px; }
+        .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
+        .upload-box { border: 2px dashed #e2e8f0; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+        .upload-box:hover { border-color: #38bdf8; }
+        .upload-box p { font-size: 14px; color: #64748b; margin-bottom: 8px; }
+        .upload-box span { font-size: 12px; color: #94a3b8; }
+        input[type="file"] { display: none; }
+        .upload-label { cursor: pointer; display: block; }
         button { width: 100%; background: #0f172a; color: white; padding: 14px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; }
     </style>
 </head>
@@ -345,15 +415,32 @@ MATCH_HTML = """<!DOCTYPE html>
     </nav>
     <div class="hero">
         <h2>Find Your Mentor Match</h2>
-        <p>Enter your profile and our AI will match you with the right mentor for your goals.</p>
+        <p>Tell us about yourself and our AI will find your best mentor matches.</p>
     </div>
     <div class="card">
-        <label>Your Profile <span class="hint">Include: Name, Major/Year, Career goals, Skills you have, Skills you want to develop, What you want in a mentor</span></label>
-        <form method="POST" action="/match">
+        <form method="POST" action="/match" enctype="multipart/form-data">
+            <label>Your Profile <span class="hint">Include: Name, Major/Year, Career goals, Skills you have, Skills you want to develop, What you want in a mentor</span></label>
             <textarea name="student" placeholder="Name: &#10;Major/Year: &#10;Career goals: &#10;Skills I have: &#10;Skills I want to develop: &#10;What I want in a mentor:"></textarea>
+            <div class="divider">or upload your resume</div>
+            <label class="upload-label" for="resume-input">
+                <div class="upload-box" id="upload-box">
+                    <p>📄 Click to upload your resume</p>
+                    <span>PDF files only</span>
+                </div>
+            </label>
+            <input type="file" id="resume-input" name="resume" accept=".pdf" onchange="updateUploadBox(this)">
             <button type="submit">Find My Mentor Match &rarr;</button>
         </form>
     </div>
+    <script>
+        function updateUploadBox(input) {
+            const box = document.getElementById('upload-box');
+            if (input.files && input.files[0]) {
+                box.innerHTML = '<p>✅ ' + input.files[0].name + '</p><span>Click to change</span>';
+                box.style.borderColor = '#38bdf8';
+            }
+        }
+    </script>
 </body>
 </html>"""
 
@@ -370,7 +457,6 @@ SIGNUP_HTML = """<!DOCTYPE html>
         nav h1 span { color: #38bdf8; }
         nav div { display: flex; gap: 24px; }
         nav a { color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; }
-        nav a:hover { color: white; }
         .hero { background: #0f172a; padding: 60px 40px 80px; text-align: center; }
         .hero h2 { color: white; font-size: 36px; font-weight: 700; margin-bottom: 12px; }
         .hero p { color: #94a3b8; font-size: 16px; max-width: 500px; margin: 0 auto; }
