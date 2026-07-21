@@ -1,20 +1,24 @@
 import anthropic
 import os
-import sqlite3
+import psycopg2
 import urllib.parse
 import json
 import io
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pypdf import PdfReader
 
-DB = "mentors.db"
+
+def get_db_connection():
+    db_url = os.environ.get("DATABASE_URL")
+    conn = psycopg2.connect(db_url)
+    return conn
 
 def init_db():
-    conn = sqlite3.connect(DB)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS mentors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT,
             role TEXT,
             experience TEXT,
@@ -28,7 +32,7 @@ def init_db():
     conn.close()
 
 def get_mentors():
-    conn = sqlite3.connect(DB)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT name, role, experience, advise, career_path, style, availability FROM mentors")
     rows = c.fetchall()
@@ -49,11 +53,11 @@ Availability: {row[6]}
     return mentor_text
 
 def save_mentor(data):
-    conn = sqlite3.connect(DB)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
         INSERT INTO mentors (name, role, experience, advise, career_path, style, availability)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
         data.get("name", ""),
         data.get("role", ""),
