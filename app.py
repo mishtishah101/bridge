@@ -22,6 +22,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS mentors (
             id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
             name TEXT,
             role TEXT,
             experience TEXT,
@@ -30,6 +31,15 @@ def init_db():
             style TEXT,
             availability TEXT
         )
+    """)
+    conn.commit()
+    conn.close()
+
+def migrate_mentors_table():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        ALTER TABLE mentors ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)
     """)
     conn.commit()
     conn.close()
@@ -73,9 +83,10 @@ def save_mentor(data):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO mentors (name, role, experience, advise, career_path, style, availability)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO mentors (user_id, name, role, experience, advise, career_path, style, availability)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
+        data.get("user_id"),
         data.get("name", ""),
         data.get("role", ""),
         data.get("experience", ""),
@@ -261,6 +272,15 @@ def parse_multipart(data, content_type):
     return fields, pdf_bytes
 
 class Handler(BaseHTTPRequestHandler):
+    def get_current_user(self):
+        cookie_header = self.headers.get("Cookie", "")
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if part.startswith("session_token="):
+                token = part[len("session_token="):]
+                return SESSIONS.get(token)
+        return None
+
     def do_GET(self):
         if self.path == "/signup":
             self.send_response(200)
@@ -271,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(ACCOUNT_SIGNUP_HTML.encode())	
+            self.wfile.write(ACCOUNT_SIGNUP_HTML.encode())
         elif self.path == "/login":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -296,12 +316,20 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/signup":
             flat = urllib.parse.parse_qs(raw_data.decode())
             flat = {k: v[0] for k, v in flat.items()}
+            user = self.get_current_user()
+            if not user:
+                self.send_response(302)
+                self.send_header("Location", "/login")
+                self.end_headers()
+                return
+            flat["user_id"] = user["id"]
             save_mentor(flat)
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(THANKS_HTML.encode())
             return
+
         if self.path == "/signup-account":
             flat = urllib.parse.parse_qs(raw_data.decode())
             flat = {k: v[0] for k, v in flat.items()}
@@ -698,7 +726,9 @@ THANKS_HTML = """<!DOCTYPE html>
 </html>"""
 
 init_db()
+migrate_mentors_table()
 init_users_table()
 port = int(os.environ.get("PORT", 8080))
 print(f"Server running at http://localhost:{port}")
 HTTPServer(("", port), Handler).serve_forever()
+
