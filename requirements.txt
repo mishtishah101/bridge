@@ -1,4 +1,5 @@
 anthropic
 pypdf
 psycopg2-binary
+bcrypt
 

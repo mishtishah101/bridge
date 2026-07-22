@@ -1,12 +1,15 @@
 import anthropic
 import os
 import psycopg2
+import secrets
+import bcrypt
 import urllib.parse
 import json
 import io
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pypdf import PdfReader
 
+SESSIONS = {}
 
 def get_db_connection():
     db_url = os.environ.get("DATABASE_URL")
@@ -26,6 +29,20 @@ def init_db():
             career_path TEXT,
             style TEXT,
             availability TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def init_users_table():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL
         )
     """)
     conn.commit()
@@ -69,6 +86,30 @@ def save_mentor(data):
     ))
     conn.commit()
     conn.close()
+
+def create_user(email, password, role):
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO users (email, password_hash, role)
+        VALUES (%s, %s, %s)
+    """, (email, password_hash, role))
+    conn.commit()
+    conn.close()
+
+def check_user(email, password):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, password_hash, role FROM users WHERE email = %s", (email,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    user_id, password_hash, role = row
+    if bcrypt.checkpw(password.encode(), password_hash.encode()):
+        return {"id": user_id, "email": email, "role": role}
+    return None
 
 def extract_pdf_text(pdf_bytes):
     try:
@@ -226,6 +267,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(SIGNUP_HTML.encode())
+        elif self.path == "/signup-account":
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(ACCOUNT_SIGNUP_HTML.encode())	
+        elif self.path == "/login":
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(LOGIN_HTML.encode())
         elif self.path == "/match":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -250,6 +301,45 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(THANKS_HTML.encode())
+            return
+        if self.path == "/signup-account":
+            flat = urllib.parse.parse_qs(raw_data.decode())
+            flat = {k: v[0] for k, v in flat.items()}
+            email = flat.get("email", "").strip().lower()
+            password = flat.get("password", "")
+            role = flat.get("role", "student")
+            try:
+                create_user(email, password, role)
+            except Exception:
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"That email is already registered. Try logging in instead.")
+                return
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Account created! You can now log in.")
+            return
+
+        if self.path == "/login":
+            flat = urllib.parse.parse_qs(raw_data.decode())
+            flat = {k: v[0] for k, v in flat.items()}
+            email = flat.get("email", "").strip().lower()
+            password = flat.get("password", "")
+            user = check_user(email, password)
+            if not user:
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Invalid email or password.")
+                return
+            token = secrets.token_hex(16)
+            SESSIONS[token] = user
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"session_token={token}; Path=/; HttpOnly")
+            self.send_header("Location", "/")
+            self.end_headers()
             return
 
         if "multipart/form-data" in content_type:
@@ -500,6 +590,77 @@ SIGNUP_HTML = """<!DOCTYPE html>
 </body>
 </html>"""
 
+ACCOUNT_SIGNUP_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bridge - Create Account</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; }
+        nav { background: #0f172a; padding: 16px 40px; }
+        nav h1 { color: white; font-size: 20px; font-weight: 600; }
+        nav h1 span { color: #38bdf8; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 420px; margin: 60px auto; padding: 40px; }
+        h2 { margin-bottom: 20px; color: #0f172a; }
+        .field { margin-bottom: 16px; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 12px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; }
+        button { width: 100%; background: #0f172a; color: white; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <nav><h1>Bridge<span>.</span></h1></nav>
+    <div class="card">
+        <h2>Create Your Account</h2>
+        <form method="POST" action="/signup-account">
+            <div class="field"><label>Email</label><input type="email" name="email" required></div>
+            <div class="field"><label>Password</label><input type="password" name="password" required></div>
+            <div class="field">
+                <label>I am a</label>
+                <select name="role">
+                    <option value="student">Student / Mentee</option>
+                    <option value="mentor">Mentor</option>
+                </select>
+            </div>
+            <button type="submit">Create Account</button>
+        </form>
+    </div>
+</body>
+</html>"""
+
+LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bridge - Log In</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; }
+        nav { background: #0f172a; padding: 16px 40px; }
+        nav h1 { color: white; font-size: 20px; font-weight: 600; }
+        nav h1 span { color: #38bdf8; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 420px; margin: 60px auto; padding: 40px; }
+        h2 { margin-bottom: 20px; color: #0f172a; }
+        .field { margin-bottom: 16px; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+        input { width: 100%; padding: 12px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; }
+        button { width: 100%; background: #0f172a; color: white; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <nav><h1>Bridge<span>.</span></h1></nav>
+    <div class="card">
+        <h2>Log In</h2>
+        <form method="POST" action="/login">
+            <div class="field"><label>Email</label><input type="email" name="email" required></div>
+            <div class="field"><label>Password</label><input type="password" name="password" required></div>
+            <button type="submit">Log In</button>
+        </form>
+    </div>
+</body>
+</html>"""
+
 THANKS_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -537,6 +698,7 @@ THANKS_HTML = """<!DOCTYPE html>
 </html>"""
 
 init_db()
+init_users_table()
 port = int(os.environ.get("PORT", 8080))
 print(f"Server running at http://localhost:{port}")
 HTTPServer(("", port), Handler).serve_forever()
