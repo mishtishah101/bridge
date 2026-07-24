@@ -58,6 +58,20 @@ def init_users_table():
     conn.commit()
     conn.close()
 
+def init_student_profiles_table():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS student_profiles (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) UNIQUE,
+            profile_text TEXT,
+            resume_text TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
 def get_mentors():
     conn = get_db_connection()
     c = conn.cursor()
@@ -95,6 +109,19 @@ def save_mentor(data):
         data.get("style", ""),
         data.get("availability", "")
     ))
+    conn.commit()
+    conn.close()
+
+def save_student_profile(user_id, profile_text, resume_text):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO student_profiles (user_id, profile_text, resume_text)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            profile_text = EXCLUDED.profile_text,
+            resume_text = EXCLUDED.resume_text
+    """, (user_id, profile_text, resume_text))
     conn.commit()
     conn.close()
 
@@ -384,6 +411,9 @@ class Handler(BaseHTTPRequestHandler):
         combined = student_text
         if resume_text:
             combined += "\n\nRESUME CONTENT:\n" + resume_text
+        current_user = self.get_current_user()
+        if current_user:
+            save_student_profile(current_user["id"], student_text, resume_text)
 
         if not combined.strip():
             self.send_response(200)
@@ -728,6 +758,7 @@ THANKS_HTML = """<!DOCTYPE html>
 init_db()
 migrate_mentors_table()
 init_users_table()
+init_student_profiles_table()
 port = int(os.environ.get("PORT", 8080))
 print(f"Server running at http://localhost:{port}")
 HTTPServer(("", port), Handler).serve_forever()
