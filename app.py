@@ -125,6 +125,22 @@ def save_student_profile(user_id, profile_text, resume_text):
     conn.commit()
     conn.close()
 
+def get_mentor_by_user_id(user_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT name, role, experience, advise, career_path, style, availability FROM mentors WHERE user_id = %s", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
+def get_student_profile_by_user_id(user_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT profile_text, resume_text FROM student_profiles WHERE user_id = %s", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
 def create_user(email, password, role):
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     conn = get_db_connection()
@@ -323,7 +339,78 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(LOGIN_HTML.encode())
+            self.wfile.write(LOGIN_HTML.encode())    
+        elif self.path == "/account":
+            user = self.get_current_user()
+            if not user:
+                self.send_response(302)
+                self.send_header("Location", "/login")
+                self.end_headers()
+                return
+            if user["role"] == "mentor":
+                mentor = get_mentor_by_user_id(user["id"])
+                if mentor:
+                    body = f"""
+                        <div class="field"><label>Name</label><p>{mentor[0]}</p></div>
+                        <div class="field"><label>Role</label><p>{mentor[1]}</p></div>
+                        <div class="field"><label>Experience</label><p>{mentor[2]}</p></div>
+                        <div class="field"><label>Can Advise On</label><p>{mentor[3]}</p></div>
+                        <div class="field"><label>Career Path</label><p>{mentor[4]}</p></div>
+                        <div class="field"><label>Mentorship Style</label><p>{mentor[5]}</p></div>
+                        <div class="field"><label>Availability</label><p>{mentor[6]}</p></div>
+                    """
+                else:
+                    body = '<p>You haven\'t created a mentor profile yet. <a href="/signup">Create one</a>.</p>'
+            else:
+                profile = get_student_profile_by_user_id(user["id"])
+                if profile:
+                    body = f"""
+                        <div class="field"><label>Your Profile</label><p>{profile[0]}</p></div>
+                        <div class="field"><label>Resume Content</label><p>{profile[1][:500] if profile[1] else "No resume uploaded."}</p></div>
+                    """
+                else:
+                    body = '<p>You haven\'t submitted a profile yet. <a href="/match">Find a mentor</a> to save one.</p>'
+            page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bridge - My Account</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; }}
+        nav {{ background: #0f172a; padding: 16px 40px; display: flex; align-items: center; justify-content: space-between; }}
+        nav h1 {{ color: white; font-size: 20px; font-weight: 600; }}
+        nav h1 span {{ color: #38bdf8; }}
+        nav div {{ display: flex; gap: 24px; align-items: center; }}
+        nav a {{ color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; }}
+        .card {{ background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 600px; margin: 60px auto; padding: 40px; }}
+        h2 {{ margin-bottom: 20px; color: #0f172a; }}
+        .field {{ margin-bottom: 16px; }}
+        .field label {{ display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }}
+        .field p {{ color: #1a1a2e; font-size: 15px; line-height: 1.5; }}
+        .email {{ color: #64748b; font-size: 14px; margin-bottom: 24px; }}
+    </style>
+</head>
+<body>
+    <nav>
+        <h1>Bridge<span>.</span></h1>
+        <div>
+            <a href="/">Home</a>
+            <a href="/match">Find a Mentor</a>
+            <a href="/signup">Become a Mentor</a>
+        </div>
+    </nav>
+    <div class="card">
+        <h2>My Account</h2>
+        <p class="email">{user["email"]} &middot; {user["role"]}</p>
+        {body}
+    </div>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page.encode())
         elif self.path == "/match":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
