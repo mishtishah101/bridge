@@ -210,6 +210,23 @@ Return only the top 3. Return only valid JSON, nothing else."""
     )
     return message.content[0].text
 
+def build_nav(user):
+    if user:
+        account_link = '<a href="/account">My Account</a>'
+    else:
+        account_link = '<a href="/login">Log In</a>'
+    return f"""
+    <nav>
+        <h1>Bridge<span>.</span></h1>
+        <div>
+            <a href="/">Home</a>
+            <a href="/match">Find a Mentor</a>
+            <a href="/signup">Become a Mentor</a>
+            {account_link}
+        </div>
+    </nav>
+    """
+
 def build_results_page(matches):
     cards = ""
     for i, m in enumerate(matches):
@@ -417,10 +434,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(MATCH_HTML.encode())
         else:
+            user = self.get_current_user()
+            page = LANDING_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(LANDING_HTML.encode())
+            self.wfile.write(page.encode())
 
     def do_POST(self):
         length = int(self.headers["Content-Length"])
@@ -569,14 +588,7 @@ LANDING_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav>
-        <h1>Bridge<span>.</span></h1>
-        <div>
-            <a href="/">Home</a>
-            <a href="/match">Find a Mentor</a>
-            <a href="/signup">Become a Mentor</a>
-        </div>
-    </nav>
+    NAV_PLACEHOLDER 
     <div class="hero">
         <h2>Navigate Your Career<br><span>With Confidence.</span></h2>
         <p>The Bridge makes navigating career paths easier. Whether it be directly after college or a mid-career pivot, The Bridge serves as a spot to manage your career and learn new skills.</p>
