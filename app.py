@@ -343,20 +343,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/signup":
+            user = self.get_current_user()
+            page = SIGNUP_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(SIGNUP_HTML.encode())
+            self.wfile.write(page.encode())
         elif self.path == "/signup-account":
+            user = self.get_current_user()
+            page = ACCOUNT_SIGNUP_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(ACCOUNT_SIGNUP_HTML.encode())
+            self.wfile.write(page.encode())
         elif self.path == "/login":
+            user = self.get_current_user()
+            page = LOGIN_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(LOGIN_HTML.encode())    
+            self.wfile.write(page.encode())
         elif self.path == "/account":
             user = self.get_current_user()
             if not user:
@@ -429,10 +435,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(page.encode())
         elif self.path == "/match":
+            user = self.get_current_user()
+            page = MATCH_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(MATCH_HTML.encode())
+            self.wfile.write(page.encode())
         else:
             user = self.get_current_user()
             page = LANDING_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
@@ -460,7 +468,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(THANKS_HTML.encode())
+            page = THANKS_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
+            self.wfile.write(page.encode())
             return
 
         if self.path == "/signup-account":
@@ -656,14 +665,7 @@ MATCH_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav>
-        <h1>Bridge<span>.</span></h1>
-        <div>
-            <a href="/">Home</a>
-            <a href="/match">Find a Mentor</a>
-            <a href="/signup">Become a Mentor</a>
-        </div>
-    </nav>
+    NAV_PLACEHOLDER
     <div class="hero">
         <h2>Find Your Mentor Match</h2>
         <p>Tell us about yourself and our AI will find your best mentor matches.</p>
@@ -720,14 +722,7 @@ SIGNUP_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav>
-        <h1>Bridge<span>.</span></h1>
-        <div>
-            <a href="/">Home</a>
-            <a href="/match">Find a Mentor</a>
-            <a href="/signup">Become a Mentor</a>
-        </div>
-    </nav>
+    NAV_PLACEHOLDER
     <div class="hero">
         <h2>Become a Mentor</h2>
         <p>Share your experience and help the next generation find their path.</p>
@@ -767,7 +762,7 @@ ACCOUNT_SIGNUP_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav><h1>Bridge<span>.</span></h1></nav>
+    NAV_PLACEHOLDER
     <div class="card">
         <h2>Create Your Account</h2>
         <form method="POST" action="/signup-account">
@@ -806,7 +801,7 @@ LOGIN_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav><h1>Bridge<span>.</span></h1></nav>
+    NAV_PLACEHOLDER
     <div class="card">
         <h2>Log In</h2>
         <form method="POST" action="/login">
@@ -838,14 +833,7 @@ THANKS_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <nav>
-        <h1>Bridge<span>.</span></h1>
-        <div>
-            <a href="/">Home</a>
-            <a href="/match">Find a Mentor</a>
-            <a href="/signup">Become a Mentor</a>
-        </div>
-    </nav>
+    NAV_PLACEHOLDER
     <div class="center">
         <h2>You're in. Welcome to Bridge.</h2>
         <p>Your profile has been added. Students will now be matched with you.</p>
