@@ -212,7 +212,7 @@ Return only the top 3. Return only valid JSON, nothing else."""
 
 def build_nav(user):
     if user:
-        account_link = '<a href="/account">My Account</a>'
+        account_link = '<a href="/account">My Account</a> <a href="/logout">Log Out</a>'
     else:
         account_link = '<a href="/login">Log In</a>'
     return f"""
@@ -363,6 +363,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(page.encode())
+        elif self.path == "/logout":
+            token = None
+            cookie_header = self.headers.get("Cookie", "")
+            for part in cookie_header.split(";"):
+                part = part.strip()
+                if part.startswith("session_token="):
+                    token = part[len("session_token="):]
+            if token and token in SESSIONS:
+                del SESSIONS[token]
+            self.send_response(302)
+            self.send_header("Set-Cookie", "session_token=; Path=/; HttpOnly; Max-Age=0")
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
         elif self.path == "/account":
             user = self.get_current_user()
             if not user:
