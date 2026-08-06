@@ -29,7 +29,8 @@ def init_db():
             advise TEXT,
             career_path TEXT,
             style TEXT,
-            availability TEXT
+            availability TEXT,
+            is_visible BOOLEAN DEFAULT TRUE       
         )
     """)
     conn.commit()
@@ -40,6 +41,15 @@ def migrate_mentors_table():
     c = conn.cursor()
     c.execute("""
         ALTER TABLE mentors ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)
+    """)
+    conn.commit()
+    conn.close()
+
+def migrate_mentors_visibility():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        ALTER TABLE mentors ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE
     """)
     conn.commit()
     conn.close()
@@ -858,6 +868,7 @@ THANKS_HTML = """<!DOCTYPE html>
 
 init_db()
 migrate_mentors_table()
+migrate_mentors_visibility()
 init_users_table()
 init_student_profiles_table()
 port = int(os.environ.get("PORT", 8080))
