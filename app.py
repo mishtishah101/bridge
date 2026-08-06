@@ -103,6 +103,14 @@ Availability: {row[6]}
 """
     return mentor_text
 
+def get_visible_mentors():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, name, role, experience, advise, career_path, style, availability FROM mentors WHERE is_visible = TRUE")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
 def save_mentor(data):
     conn = get_db_connection()
     c = conn.cursor()
@@ -236,6 +244,56 @@ def build_nav(user):
         </div>
     </nav>
     """
+
+def build_mentors_page(user, mentors):
+    cards = ""
+    for m in mentors:
+        cards += f"""
+        <div class="card">
+            <div class="mentor-name">{m[1]}</div>
+            <div class="mentor-role">{m[2]}</div>
+            <p class="field-label">Experience</p>
+            <p>{m[3]}</p>
+            <p class="field-label">Can Advise On</p>
+            <p>{m[4]}</p>
+            <p class="field-label">Availability</p>
+            <p>{m[7]}</p>
+        </div>
+        """
+    if not cards:
+        cards = "<p>No mentors are currently available.</p>"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bridge - Browse Mentors</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #1a1a2e; min-height: 100vh; }}
+        nav {{ background: #0f172a; padding: 16px 40px; display: flex; align-items: center; justify-content: space-between; }}
+        nav h1 {{ color: white; font-size: 20px; font-weight: 600; }}
+        nav h1 span {{ color: #38bdf8; }}
+        nav div {{ display: flex; gap: 24px; }}
+        nav a {{ color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; }}
+        .hero {{ background: #0f172a; padding: 50px 40px 70px; text-align: center; }}
+        .hero h2 {{ color: white; font-size: 32px; font-weight: 700; margin-bottom: 10px; }}
+        .hero p {{ color: #94a3b8; font-size: 15px; }}
+        .grid {{ max-width: 900px; margin: -40px auto 60px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; padding: 0 20px; }}
+        .card {{ background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); padding: 24px; border-top: 4px solid #38bdf8; }}
+        .mentor-name {{ font-size: 18px; font-weight: 700; color: #0f172a; }}
+        .mentor-role {{ font-size: 13px; color: #64748b; margin-bottom: 12px; }}
+        .field-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-top: 10px; }}
+    </style>
+</head>
+<body>
+    {build_nav(user)}
+    <div class="hero">
+        <h2>Browse All Mentors</h2>
+        <p>See everyone currently available for mentorship.</p>
+    </div>
+    <div class="grid">{cards}</div>
+</body>
+</html>"""
 
 def build_results_page(matches):
     cards = ""
@@ -461,6 +519,14 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/match":
             user = self.get_current_user()
             page = MATCH_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page.encode())
+        elif self.path == "/mentors":
+            user = self.get_current_user()
+            mentors = get_visible_mentors()
+            page = build_mentors_page(user, mentors)
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
