@@ -295,7 +295,7 @@ def build_mentors_page(user, mentors):
 </body>
 </html>"""
 
-def build_results_page(matches):
+def build_results_page(matches, user=None):
     cards = ""
     for i, m in enumerate(matches):
         score = m.get("score", 0)
@@ -348,20 +348,16 @@ def build_results_page(matches):
     </style>
 </head>
 <body>
-    <nav>
-        <h1>Bridge<span>.</span></h1>
-        <div>
-            <a href="/">Home</a>
-            <a href="/match">Find a Mentor</a>
-            <a href="/signup">Become a Mentor</a>
-        </div>
-    </nav>
+    {build_nav(user)}
     <div class="hero">
         <h2>Your Mentor Matches</h2>
         <p>Here are your top matches based on your profile and goals.</p>
     </div>
-    <div class="results">{cards}</div>
-    <div class="back"><a href="/match">Search Again</a></div>
+        <div class="results">{cards}</div>
+    <div class="back">
+        <a href="/mentors">Browse All Mentors</a>
+        {' <a href="/match?update=1">Update My Profile</a>' if user else ''}
+    </div>
 </body>
 </html>"""
 
@@ -516,8 +512,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(page.encode())
-        elif self.path == "/match":
+        elif self.path == "/match" or self.path == "/match?update=1":
             user = self.get_current_user()
+            show_form = self.path.endswith("?update=1")
+            if user and user["role"] == "student" and not show_form:
+                profile = get_student_profile_by_user_id(user["id"])
+                if profile:
+                    student_text, resume_text = profile
+                    combined = student_text
+                    if resume_text:
+                        combined += "\n\nRESUME CONTENT:\n" + resume_text
+                    mentors = get_mentors()
+                    if mentors:
+                        raw = get_match(combined, mentors)
+                        try:
+                            raw = raw.strip()
+                            if raw.startswith("```"):
+                                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+                            data_json = json.loads(raw)
+                            matches = data_json.get("matches", [])[:3]
+                        except Exception:
+                            matches = []
+                        page = build_results_page(matches, user)
+                    else:
+                        page = MATCH_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(page.encode())
+                    return
             page = MATCH_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
