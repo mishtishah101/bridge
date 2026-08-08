@@ -245,6 +245,36 @@ def build_nav(user):
     </nav>
     """
 
+def build_message_page(title, message, user=None, link_href="/", link_text="Go Home"):
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bridge - {title}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; }}
+        nav {{ background: #0f172a; padding: 16px 40px; display: flex; align-items: center; justify-content: space-between; }}
+        nav h1 {{ color: white; font-size: 20px; font-weight: 600; }}
+        nav h1 span {{ color: #38bdf8; }}
+        nav div {{ display: flex; gap: 24px; }}
+        nav a {{ color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500; }}
+        .center {{ text-align: center; padding: 100px 40px; }}
+        .center h2 {{ font-size: 28px; color: #0f172a; margin-bottom: 12px; }}
+        .center p {{ color: #64748b; font-size: 16px; margin-bottom: 24px; }}
+        .center a {{ background: #0f172a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; }}
+    </style>
+</head>
+<body>
+    {build_nav(user)}
+    <div class="center">
+        <h2>{title}</h2>
+        <p>{message}</p>
+        <a href="{link_href}">{link_text}</a>
+    </div>
+</body>
+</html>"""
+
 def build_mentors_page(user, mentors):
     cards = ""
     for m in mentors:
@@ -295,7 +325,7 @@ def build_mentors_page(user, mentors):
 </body>
 </html>"""
 
-def build_results_page(matches, user=None):
+def build_results_page(matches, user=None, student_text=""):
     cards = ""
     for i, m in enumerate(matches):
         score = m.get("score", 0)
@@ -358,6 +388,18 @@ def build_results_page(matches, user=None):
         <a href="/mentors">Browse All Mentors</a>
         {' <a href="/match?update=1">Update My Profile</a>' if user else ''}
     </div>
+    {"" if user else f'''
+    <div class="card" style="max-width:420px;margin:0 auto 60px;">
+        <h2 style="margin-bottom:16px;">Save This Match</h2>
+        <p style="margin-bottom:16px;color:#64748b;font-size:14px;">Create an account to save your profile and come back to your matches anytime.</p>
+        <form method="POST" action="/signup-and-save">
+            <input type="hidden" name="student" value="{student_text}">
+            <div class="field"><label>Email</label><input type="email" name="email" required></div>
+            <div class="field"><label>Password</label><input type="password" name="password" required></div>
+            <button type="submit">Create Account &amp; Save</button>
+        </form>
+    </div>
+    '''}
 </body>
 </html>"""
 
@@ -533,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
                             matches = data_json.get("matches", [])[:3]
                         except Exception:
                             matches = []
-                        page = build_results_page(matches, user)
+                        page = build_results_page(matches, user, student_text)
                     else:
                         page = MATCH_HTML.replace("NAV_PLACEHOLDER", build_nav(user))
                     self.send_response(200)
@@ -594,17 +636,18 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 create_user(email, password, role)
             except Exception:
+                page = build_message_page("Already Registered", "That email is already registered. Try logging in instead.", None, "/login", "Go to Login")
                 self.send_response(200)
                 self.send_header("Content-type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(b"That email is already registered. Try logging in instead.")
+                self.wfile.write(page.encode())
                 return
+            page = build_message_page("Account Created", "You can now log in.", None, "/login", "Go to Login")
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"Account created! You can now log in.")
+            self.wfile.write(page.encode())
             return
-
         if self.path == "/login":
             flat = urllib.parse.parse_qs(raw_data.decode())
             flat = {k: v[0] for k, v in flat.items()}
@@ -612,16 +655,41 @@ class Handler(BaseHTTPRequestHandler):
             password = flat.get("password", "")
             user = check_user(email, password)
             if not user:
+                page = build_message_page("Login Failed", "Invalid email or password.", None, "/login", "Try Again")
                 self.send_response(200)
                 self.send_header("Content-type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(b"Invalid email or password.")
+                self.wfile.write(page.encode())
                 return
             token = secrets.token_hex(16)
             SESSIONS[token] = user
             self.send_response(302)
             self.send_header("Set-Cookie", f"session_token={token}; Path=/; HttpOnly")
             self.send_header("Location", "/")
+            self.end_headers()
+            return
+        if self.path == "/signup-and-save":
+            flat = urllib.parse.parse_qs(raw_data.decode())
+            flat = {k: v[0] for k, v in flat.items()}
+            email = flat.get("email", "").strip().lower()
+            password = flat.get("password", "")
+            student_text = flat.get("student", "")
+            try:
+                create_user(email, password, "student")
+            except Exception:
+                page = build_message_page("Already Registered", "That email is already registered. Try logging in instead.", None, "/login", "Go to Login")
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(page.encode())
+                return
+            user = check_user(email, password)
+            save_student_profile(user["id"], student_text, "")
+            token = secrets.token_hex(16)
+            SESSIONS[token] = user
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"session_token={token}; Path=/; HttpOnly")
+            self.send_header("Location", "/match")
             self.end_headers()
             return
 
@@ -644,19 +712,20 @@ class Handler(BaseHTTPRequestHandler):
             save_student_profile(current_user["id"], student_text, resume_text)
 
         if not combined.strip():
+            page = build_message_page("Missing Info", "Please enter your profile or upload a resume.", current_user, "/match", "Try Again")
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"Please enter your profile or upload a resume.")
+            self.wfile.write(page.encode())
             return
-
         mentors = get_mentors()
         if not mentors:
+            page = build_message_page("No Mentors Yet", "No mentors have signed up yet. Check back soon!", current_user, "/", "Go Home")
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"No mentors have signed up yet.")
-            return
+            self.wfile.write(page.encode())
+            return 
 
         raw = get_match(combined, mentors)
         try:
@@ -671,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
-        self.wfile.write(build_results_page(matches).encode())
+        self.wfile.write(build_results_page(matches, current_user, student_text).encode())
 
     def log_message(self, format, *args):
         pass
