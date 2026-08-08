@@ -275,12 +275,16 @@ def build_message_page(title, message, user=None, link_href="/", link_text="Go H
 </body>
 </html>"""
 
-def build_mentors_page(user, mentors):
+def build_mentors_page(user, mentors, top_mentor_names=None):
+    if top_mentor_names is None:
+        top_mentor_names = set()
     cards = ""
     for m in mentors:
+        badge = '<span style="background:#38bdf8;color:#0f172a;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;margin-left:8px;">TOP MATCH</span>' if m[1] in top_mentor_names else ''
         cards += f"""
         <div class="card">
-            <div class="mentor-name">{m[1]}</div>
+            <div class="mentor-name">{m[1]}{badge}</div>   
+
             <div class="mentor-role">{m[2]}</div>
             <p class="field-label">Experience</p>
             <p>{m[3]}</p>
@@ -591,7 +595,27 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/mentors":
             user = self.get_current_user()
             mentors = get_visible_mentors()
-            page = build_mentors_page(user, mentors)
+            top_mentor_names = set()
+            if user and user["role"] == "student":
+                profile = get_student_profile_by_user_id(user["id"])
+                if profile:
+                    student_text, resume_text = profile
+                    combined = student_text
+                    if resume_text:
+                        combined += "\n\nRESUME CONTENT:\n" + resume_text
+                    all_mentors_text = get_mentors()
+                    if all_mentors_text:
+                        raw = get_match(combined, all_mentors_text)
+                        try:
+                            raw = raw.strip()
+                            if raw.startswith("```"):
+                                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+                            data_json = json.loads(raw)
+                            matches = data_json.get("matches", [])[:3]
+                            top_mentor_names = {m.get("name") for m in matches}
+                        except Exception:
+                            top_mentor_names = set()
+            page = build_mentors_page(user, mentors, top_mentor_names)
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
